@@ -47,7 +47,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Cls_Teste.cs" />
-    <Compile Include="CSharp\Dicio.cs" />
+    <Compile Include="CSharp\Dicionary.cs" />
+    <Compile Include="CSharp\FileAnalysis.cs" />
+    <Compile Include="CSharp\ModelAnalisys.cs" />
     <Compile Include="CSharp\TextScan.cs" />
     <Compile Include="Descriptions\Enum_Description.cs" />
     <Compile Include="Implementation.cs" />

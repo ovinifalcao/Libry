@@ -9,22 +9,15 @@ namespace Libry
     class TextScan
     {
         public string ProjectPath { get; set; }
-
         public List<string> Occurences { get; private set; } = new List<string>();
-
         private string[] FilesToScan;
-
-        private Dicio LanguageDictionary;
-
 
         public TextScan(string projectPath)
         {
             ProjectPath = projectPath;
-            GetLanguageDictionary();
             GetFilesToScan();
             ReadingEachFile();
         }
-
 
 
         private void GetFilesToScan()
@@ -35,7 +28,6 @@ namespace Libry
                           where Path.GetExtension(Sort) is ".cs"
                           select Sort).ToArray();
         }
-
         private void ReadingEachFile()
         {
             foreach(string Fl in FilesToScan)
@@ -43,7 +35,6 @@ namespace Libry
                 ReadingEachLine(Fl);
             }
         }
-
         private void ReadingEachLine(string FileName)
         {
             using (var sr = new StreamReader(FileName))
@@ -51,65 +42,52 @@ namespace Libry
                 string ln;
                 while ((ln = sr.ReadLine()) != null)
                 {
-
                     ln = AvoidCommentary(ln);
-                    bool IsNamedStructure = (GetNamedStructures(ln));
-                    bool IsKnownType = Searching(ln, LanguageDictionary.PrimitiveTypes);
-                    bool IsContextualCaracter = Searching(ln, new List<string>() { "{", "}" });
 
-                    string FirstLine = ln;
-                    if (!IsNamedStructure && IsKnownType && !String.IsNullOrEmpty(ln) && !MethodReservedWords(ln) && !IsContextualCaracter)
+                    if (LookingClasses(ln))
                     {
-                        if (MethodReservedWords(BlockByBracketsPairs(ln, sr),
-                                                new List<string>() { "return" }))
-                        {
-                            AddToOccurencesList(FirstLine);
-                        }
-
+                        var ClassBlock = ReturnBlockCode(ln, sr);
+                        //SepareCodeBlocks(ClassBlock);
                     }
-                    else if (!IsNamedStructure && !IsKnownType && !String.IsNullOrEmpty(ln) && !IsContextualCaracter)
-                    {
-                        if (ln.Contains(";")) { continue; }
 
-                        var LineArray = ln.Split(' ');
-
-                        if (LineArray.Count() > 2)
-                        {
-                            var NextLine = NextValidLine(sr);
-                            if (!String.IsNullOrEmpty(NextLine) && (ln.Contains("{") || NextLine.Contains("{")))
-                            {
-                                var Blk = BlockByBracketsPairs(FirstLine, sr, 1);
-                                if (Searching(Blk, new List<string>() { "return" })) { AddToOccurencesList(FirstLine); };
-                            }
-                        }
-                    }
-                    else if (MethodReservedWords(ln) && !IsContextualCaracter)
-                    {
-                        AddToOccurencesList(FirstLine);
-                    }
                 }
             }
         }
 
-        private string NextValidLine(StreamReader sr)
+        private bool LookingClasses(string FileLine)
         {
-            string TxtLine = null;
-            while(!(String.IsNullOrEmpty(TxtLine) == sr.EndOfStream))
+            if (Searching(FileLine, new List<string>(){"class", "interface"}))
             {
-                TxtLine = sr.ReadLine();
+                return true;
             }
-            return TxtLine;
+
+            return false;
         }
 
-        private string BlockByBracketsPairs(string FileLine, StreamReader sr, int InitBrackets = 0)
+
+        private List<string> ReturnBlockCode(string FileLine, StreamReader sr, int InitBrackets = 0)
         {
-            string Block = null;
-            int EndBrackets = 0;
+            List<string> Block = new List<string>();
             bool BlockComplete = false;
+            string BlockDeterminer = null;
+            int EndBrackets = 0;
 
             do
             {
-                Block += FileLine;
+                while (string.IsNullOrEmpty(BlockDeterminer))
+                {
+                    var BlTm = FindBlockTerminator(FileLine);
+                    if (string.IsNullOrEmpty(BlTm))
+                    {
+                        FileLine = sr.ReadLine();
+                    }
+                    else
+                    {
+                        BlockDeterminer = BlTm;
+                    }
+                }
+
+                if (BlockDeterminer == ";") { return Block; }
                 if (!String.IsNullOrEmpty(FileLine) && FileLine.Contains("{")) { InitBrackets++; }
                 if (!String.IsNullOrEmpty(FileLine) && FileLine.Contains("}")) { EndBrackets++; }
                 if (InitBrackets != 0 && InitBrackets == EndBrackets)
@@ -117,14 +95,136 @@ namespace Libry
                     BlockComplete = true;
                 }
                 FileLine = sr.ReadLine();
+                Block.Add(AvoidCommentary(FileLine));
             }
             while (!BlockComplete);
 
-            return Block;
+            return RemoveLastBracket(Block);
+        }
+
+        private ModelAnalisys ReturnBlockCode(List<string> CompleteClass, int BegginIndex, int InitBrackets = 0)
+        {
+            int EndBrackets = 0;
+
+            var MdCodeBl = new ModelAnalisys()
+            {
+                CodeBlock = CompleteClass[BegginIndex],
+                FirstLine = CompleteClass[BegginIndex]
+            };
+
+            string
+                BlockTerminator = null,
+                CurrentLine = null;
+
+            bool BlockComplete = false;
+
+            do
+            {
+                while (string.IsNullOrEmpty(BlockTerminator))
+                {
+                    string BlTm = null;
+                    if (!String.IsNullOrEmpty(CurrentLine)) { BlTm = FindBlockTerminator(CurrentLine); };
+                    if (string.IsNullOrEmpty(BlTm))
+                    {
+                        BegginIndex++;
+                        CurrentLine = CompleteClass[BegginIndex];
+                        MdCodeBl.CodeBlock += CompleteClass[BegginIndex];
+                        MdCodeBl.TerminatorLine = BegginIndex;
+                    }
+                    else
+                    {
+                        BlockTerminator = BlTm;
+                    }
+                }
+
+                if (BlockTerminator == ";")
+                {
+                    MdCodeBl.BlockEnd = BegginIndex;
+                    return MdCodeBl;
+                }
+
+                if (!String.IsNullOrEmpty(CurrentLine) && CurrentLine.Contains("{")) { InitBrackets++; }
+                if (!String.IsNullOrEmpty(CurrentLine) && CurrentLine.Contains("}")) { EndBrackets++; }
+                if (InitBrackets != 0 && InitBrackets == EndBrackets)
+                {
+                    BlockComplete = true;
+                }
+                BegginIndex++;
+                CurrentLine = CompleteClass[BegginIndex];
+                MdCodeBl.CodeBlock += CompleteClass[BegginIndex];
+            }
+            while (!BlockComplete);
+
+            MdCodeBl.BlockEnd = BegginIndex;
+            return MdCodeBl;
+        }
+
+
+
+        private void Recognizing(ModelAnalisys MdBlock)
+        {
+
+
+        }
+
+        private bool TryMethodByWords(string CodeBlock, List<string> OnlyMethods = null, string FirstLine = null)
+        {
+            if (string.IsNullOrEmpty(FirstLine)) { FirstLine = CodeBlock; }
+
+            // Consider partial as a reserved word for methods because it did not have the identifier "class"
+            if ((OnlyMethods == null))
+            {
+                OnlyMethods = new List<string>()
+                {
+                    "void",
+                    "abstract",
+                    "partial",
+                    "virtual"
+                };
+            }
+
+
+            if (Searching(FirstLine, OnlyMethods))
+            {
+                Occurences.Add(FirstLine);
+                return true;
+            }
+
+            return false;
+        }
+
+
+
+        private string FindBlockTerminator(string FileLine)
+        {
+            if (FileLine.Contains(";") && !FileLine.Contains("{"))
+            {
+                return ";";
+            }
+            else if (!FileLine.Contains(";") && FileLine.Contains("{"))
+            {
+                return "{";
+            }
+            else if (FileLine.Contains(";") && FileLine.Contains("{"))
+            {
+                if (FileLine.IndexOf(";") < FileLine.IndexOf("{"))
+                {
+                    return ";";
+                }
+                else
+                {
+                    return "{";
+                }
+            }
+            else
+            {
+                return null;
+            }
         }
 
         private string AvoidCommentary(string FileLine)
         {
+
             if (FileLine.Replace(" ", "").IndexOf("///") == 0) { return ""; }
             if (FileLine.Contains("//"))
             {
@@ -134,96 +234,39 @@ namespace Libry
             return FileLine;
         }
 
-        private bool MethodReservedWords(string FileLine, List<string> OnlyMethods = null)
+        private string NextValidLine(List<string> Txt, int Index)
         {
-            // Consider partial as a word reserved for methods because it did not have the identifier "class"
-            if ((OnlyMethods == null))
+            while (!(String.IsNullOrEmpty(Txt[Index]) == (Index == Txt.Count)))
             {
-                OnlyMethods = new List<string>()
+                Index++;
+            }
+            return Txt[Index];
+        }
+
+        private List<string> RemoveLastBracket(List<string> CompleteClass)
+        {
+            byte BracketsCounter = 0;
+            int i = CompleteClass.Count -1;
+            while (BracketsCounter < 1) 
+            {
+                if (CompleteClass[i].Contains("}"))
                 {
-                    "void",
-                    "abstract",
-                    "partial"
-                };
+                    CompleteClass.RemoveAt(i);
+                    BracketsCounter++;
+                    i--;
+                }
             }
 
-            if (Searching(FileLine, OnlyMethods))
+            return CompleteClass;
+        }
+
+        private void RemoveIdendifiedOccurrence(List<string> CompleteClass, int BegginIndex, int EndIndex)
+        {
+            while (BegginIndex <= EndIndex)
             {
-                return true;
+                CompleteClass[BegginIndex] = "";
+                BegginIndex++;
             }
-
-            return false;
-        }
-
-        private void GetLanguageDictionary()
-        {
-            var Dic = new Dicio()
-            {
-                 MainStructures = new List<string>
-                 {
-                    "class",
-                    "struct",
-                    "enum",
-                    "namespace",
-                    "interface",
-                    "delegate",
-                    "(){",
-                    "property",
-                 },
-
-                 AcessModifiers = new List<string>()
-                 {
-                    "public",
-                    "protected",
-                    "internal",
-                    "protected internal",
-                    "private",
-                    "private protected"
-                 },
-
-
-                 //YES I KNOW STRING IS NOT A PRIMITIVE TYPE
-                PrimitiveTypes = new List<string>()
-                 {
-                    "bool",
-                    "byte",
-                    "sbyte",
-                    "char",
-                    "decimal",
-                    "double",
-                    "float",
-                    "int",
-                    "uint",
-                    "long",
-                    "ulong",
-                    "object",
-                    "short",
-                    "ushort",
-                    "string",
-                    "void"
-                 },
-
-            };
-
-            LanguageDictionary = Dic;
-
-        }
-
-        private bool GetNamedStructures(string FileLine)
-        {
-            if(Searching(FileLine, LanguageDictionary.MainStructures))
-            {
-                AddToOccurencesList(FileLine);
-                return true;
-            }
-
-            return false;
-        }
-
-        private void AddToOccurencesList(string FileLine)
-        {
-            FileLine = FileLine.TrimStart(' ').TrimEnd(' ');
-            Occurences.Add(FileLine);
         }
 
         private bool Searching(string FileLine, List<string> DicionaryStructure)

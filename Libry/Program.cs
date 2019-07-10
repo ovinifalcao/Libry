@@ -16,15 +16,15 @@ namespace Libry
             //Console.WriteLine(me[0]);
             var sw = new Stopwatch();
             sw.Start();
-            var test = new TextScan(@"C:\temp\LibryTeste");
+            var test = new FileAnalysis(@"C:\temp\LibryTeste");
             sw.Stop();
 
-            foreach (string St in test.Occurences)
+            foreach (ModelAnalisys St in test.IdentifiedStructures)
             {
-                Console.WriteLine(St);
+                Console.WriteLine(St.FirstLine);
             }
             Console.WriteLine("Time it took: {0}", sw.ElapsedMilliseconds);
-            Console.WriteLine("Amount of lines: {0}", test.Occurences.Count());
+            Console.WriteLine("Amount of lines: {0}", test.NamedStructures.Count());
 
             Console.Read();
 
